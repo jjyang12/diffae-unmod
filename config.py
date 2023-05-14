@@ -39,6 +39,12 @@ data_paths = {
         'datasets/celeba_anno/CelebAMask-HQ-attribute-anno.txt'),
     'celeba_relight':
     os.path.expanduser('datasets/celeba_hq_light/celeba_light.txt'),
+    'ubnormal':
+    '/home/jy2k16/UBNormalVids/train_list.txt',
+    'shanghaitech_flows':
+    '/home/jy2k16/diffae/train_raw_flows',
+    'mnist':
+    '/home/eprakash/mnist/train_list.txt',
 }
 
 
@@ -301,7 +307,20 @@ class TrainConfig(BaseConfig):
                               original_resolution=None,
                               crop_d2c=True,
                               **kwargs)
+        elif self.data_name == 'ubnormal':
+            return UBNormal_dataset(path=path or self.data_path,
+                                    image_size = self.img_size,
+                                    **kwargs)
+        elif self.data_name == 'shanghaitech_flows':
+            return ShanghaiTechOpticalFlow(path=path or self.data_path,
+                                           image_size = self.img_size,
+                                           **kwargs)
+        elif self.data_name == 'mnist':
+            return MNIST_dataset(path=path or self.data_path,
+                                           image_size = self.img_size,
+                                           **kwargs)
         else:
+            print("self.data_name:", self.data_name)
             raise NotImplementedError()
 
     def make_loader(self,

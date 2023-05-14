@@ -9,7 +9,9 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10, LSUNClass
 import torch
 import pandas as pd
-
+import numpy as np
+from tqdm import tqdm
+from collections import defaultdict
 import torchvision.transforms.functional as Ftrans
 
 
@@ -714,3 +716,286 @@ class Repeat(Dataset):
     def __getitem__(self, index):
         index = index % self.original_len
         return self.dataset[index]
+
+
+class UBNormal_dataset(Dataset):
+    def __init__(self,
+                 path = "/home/jy2k16/UBNormalVids/train_list.txt",
+                 image_size=128,
+                 original_resolution=256,
+                 do_augment: bool = True,
+                 do_transform: bool = True,
+                 do_normalize: bool = True,
+                 **kwargs):
+        self.path = path
+        self.original_resolution = original_resolution
+        self.data, self.group_to_idxs = self.load_data(path)
+        self.length = len(self.data)
+
+        transform = [
+            transforms.Resize(image_size),
+            transforms.CenterCrop(image_size),
+        ]
+        if do_augment:
+            transform.append(transforms.RandomHorizontalFlip())
+        if do_transform:
+            transform.append(transforms.ToTensor())
+        if do_normalize:
+            transform.append(
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
+        self.transform = transforms.Compose(transform)
+
+    def load_data(self, path):
+        i = 0
+        data = []
+        group_to_idxs = defaultdict(list)
+        with open(self.path, "r") as fp:
+            for line in fp:
+                img, group = line.split(",")
+                classification = group.split("_")
+                if classification[0] == "normal":
+                    data.append(img)
+                    group_to_idxs[group].append(i)
+                    i += 1
+        print("length of data", len(data))
+        return data, group_to_idxs
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        img = self.data[index]
+        img = Image.open(img)
+        img = img.convert('RGB')
+        img = self.transform(img)
+        return {'img': img, 'index': index}
+    
+
+class UBNormal_dataset_eval(Dataset):
+    def __init__(self,
+                 path = "/home/jy2k16/UBNormalVids/train_list.txt",
+                 image_size=128,
+                 original_resolution=256,
+                 do_augment: bool = False,
+                 do_transform: bool = True,
+                 do_normalize: bool = True,
+                 label = "normal",
+                 **kwargs):
+        self.path = path
+        self.original_resolution = original_resolution
+        self.label = label
+        self.data, self.group_to_idxs = self.load_data(path)
+        self.length = len(self.data)
+        self.image_size = image_size
+
+        transform = [
+            transforms.Resize(image_size),
+            transforms.CenterCrop(image_size),
+        ]
+        if do_augment:
+            transform.append(transforms.RandomHorizontalFlip())
+        if do_transform:
+            transform.append(transforms.ToTensor())
+        if do_normalize:
+            transform.append(
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
+        self.transform = transforms.Compose(transform)
+
+    def load_data(self, path):
+        i = 0
+        data = []
+        group_to_idxs = defaultdict(list)
+        with open(self.path, "r") as fp:
+            for line in fp:
+                img, group = line.split(",")
+                classification = group.split("_")
+                if self.label == "both":
+                    data.append(img)
+                    group_to_idxs[group].append(i)
+                    i += 1
+                elif classification[0] == self.label:
+                    data.append(img)
+                    group_to_idxs[group].append(i)
+                    i += 1
+        print("length of data", len(data))
+        return data, group_to_idxs
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        img = self.data[index]
+        img = Image.open(img)
+        img = img.convert('RGB')
+        orig_img = img.copy()
+        transform = [
+            transforms.Resize(self.image_size),
+            transforms.CenterCrop(self.image_size),
+            transforms.ToTensor(),
+        ]
+        orig_img = transforms.Compose(transform)(orig_img)
+        img = self.transform(img)
+        return {'img': img, 'index': index, 'orig_img': orig_img}
+    
+
+class ShanghaiTechOpticalFlow(Dataset):
+    def __init__(self,
+                 path = '/home/jy2k16/diffae/train_raw_flows',
+                 image_size = 128,
+                 stride: int = 16,
+                 **kwargs):
+        self.stride = stride
+        self.path = path
+        transform_flow = [
+            transforms.Resize(image_size),
+            transforms.CenterCrop(image_size),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5),(0.5))
+        ]
+        self.transform_flow = transforms.Compose(transform_flow)
+        self.data = self.load_data(path)
+        self.length = len(self.data)
+
+    def load_data(self, path):
+        i = 0
+        data = []
+        for file in tqdm(os.listdir(path)):
+            file_path = path + '/' + file
+            flows = torch.from_numpy(np.load(file_path)).permute((2,0,1))
+            data.append(flows)
+        return data
+    
+    def __len__(self):
+        return self.length
+    
+    def __getitem__(self, index):
+        flows = self.data[index]
+        img = Image.open(flows)
+        img = self.transform_flow(img)
+        return {'img':img, 'index':index}
+
+
+
+class MNIST_dataset(Dataset):
+    def __init__(self,
+                 path = "/home/eprakash/mnist/train_list.txt",
+                 image_size=28,
+                 original_resolution=28,
+                 do_augment: bool = True,
+                 do_transform: bool = True,
+                 do_normalize: bool = True,
+                 **kwargs):
+        self.path = path
+        self.original_resolution = original_resolution
+        self.data = self.load_data(path)
+        self.length = len(self.data)
+        self.image_size = image_size
+
+        transform = [
+            transforms.CenterCrop(image_size),
+            transforms.Resize(64)
+        ]
+        # if do_augment:
+        #     transform.append(transforms.RandomHorizontalFlip())
+        if do_transform:
+            transform.append(transforms.ToTensor())
+        if do_normalize:
+            transform.append(
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
+        self.transform = transforms.Compose(transform)
+
+    def load_data(self, path):
+        i = 0
+        data = []
+        with open(self.path, "r") as fp:
+            for line in fp:
+                path = line.strip()
+                data.append(path)
+                i += 1
+        print("length of data", len(data))
+        return data
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        img = self.data[index]
+        img = Image.open(img)
+        img = img.convert('RGB')
+        orig_img = img.copy()
+        transform = [
+            transforms.CenterCrop(self.image_size),
+            transforms.Resize(64),
+            transforms.ToTensor(),
+        ]
+        orig_img = transforms.Compose(transform)(orig_img)
+        img = self.transform(img)
+        return {'img': img, 'index': index, 'orig_img':orig_img}
+    
+
+class UBNormal_dataset_eval(Dataset):
+    def __init__(self,
+                 path = "/home/jy2k16/UBNormalVids/train_list.txt",
+                 image_size=128,
+                 original_resolution=256,
+                 do_augment: bool = False,
+                 do_transform: bool = True,
+                 do_normalize: bool = True,
+                 label = "normal",
+                 **kwargs):
+        self.path = path
+        self.original_resolution = original_resolution
+        self.label = label
+        self.data, self.group_to_idxs = self.load_data(path)
+        self.length = len(self.data)
+        self.image_size = image_size
+
+        transform = [
+            transforms.Resize(image_size),
+            transforms.CenterCrop(image_size),
+        ]
+        if do_augment:
+            transform.append(transforms.RandomHorizontalFlip())
+        if do_transform:
+            transform.append(transforms.ToTensor())
+        if do_normalize:
+            transform.append(
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
+        self.transform = transforms.Compose(transform)
+
+    def load_data(self, path):
+        i = 0
+        data = []
+        group_to_idxs = defaultdict(list)
+        with open(self.path, "r") as fp:
+            for line in fp:
+                img, group = line.split(",")
+                classification = group.split("_")
+                if self.label == "both":
+                    data.append(img)
+                    group_to_idxs[group].append(i)
+                    i += 1
+                elif classification[0] == self.label:
+                    data.append(img)
+                    group_to_idxs[group].append(i)
+                    i += 1
+        print("length of data", len(data))
+        return data, group_to_idxs
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        img = self.data[index]
+        img = Image.open(img)
+        img = img.convert('RGB')
+        orig_img = img.copy()
+        transform = [
+            transforms.Resize(self.image_size),
+            transforms.CenterCrop(self.image_size),
+            transforms.ToTensor(),
+        ]
+        orig_img = transforms.Compose(transform)(orig_img)
+        img = self.transform(img)
+        return {'img': img, 'index': index, 'orig_img': orig_img}
+    
